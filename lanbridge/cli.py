@@ -1,14 +1,14 @@
 """
-LanBridge VPN — туннель для игр с другом.
+LanBridge VPN -- CLI interface.
 
-Принцип: как Radmin VPN, но свой.
-Оба компьютера получают IP в виртуальной сети 10.13.37.x
-и видят друг друга как в локалке.
+Creates a virtual LAN between two computers over an encrypted UDP tunnel.
+Both computers receive IPs in the 10.13.37.0/24 subnet and can communicate
+as if on a physical LAN.
 
-Использование:
-  lanbridge host          → создаёшь комнату, получаешь 10.13.37.1
-  lanbridge connect CODE  → подключаешься, получаешь 10.13.37.2
-  lanbridge games         → подсказки по играм
+Usage:
+  lanbridge host          -> create room, get 10.13.37.1
+  lanbridge connect CODE  -> join room, get 10.13.37.2
+  lanbridge games         -> game connection hints
 """
 
 import argparse
@@ -31,8 +31,30 @@ logger = logging.getLogger("lanbridge")
 _shutdown_event: Optional[asyncio.Event] = None
 
 
+def _has_admin() -> bool:
+    """Check if running with admin/root privileges."""
+    if sys.platform == 'win32':
+        try:
+            import ctypes
+            return ctypes.windll.shell32.IsUserAnAdmin() != 0
+        except Exception:
+            return False
+    else:
+        return os.getuid() == 0
+
+
+def _wait_on_windows():
+    """Pause before exit on Windows so the window does not close instantly."""
+    if sys.platform == 'win32':
+        print()
+        try:
+            input("  Press Enter to exit...")
+        except EOFError:
+            pass
+
+
 # ═══════════════════════════════════════════════════════════
-# УТИЛИТЫ
+# UTILITIES
 # ═══════════════════════════════════════════════════════════
 
 def generate_password(length: int = 16) -> str:
@@ -123,41 +145,47 @@ async def cmd_host(args):
     port = args.port or 9876
 
     # Определяем IP
-    print("  Определяю IP...")
+    print("  Detecting IP...")
     ext_ip = get_external_ip()
     local_ip = get_local_ip()
     display_ip = args.ip or ext_ip or local_ip
 
     # Проверяем права
-    if sys.platform == 'linux' and os.getuid() != 0:
+    if not _has_admin():
         print()
-        print("  [!] Нужны права root для создания виртуальной сетевой карты.")
-        print("  [!] Запусти через sudo:")
-        print(f"  [!]   sudo lanbridge host")
+        if sys.platform == 'win32':
+            print("  [!] Administrator rights required to create virtual network adapter.")
+            print("  [!] Right-click the executable -> Run as administrator")
+        else:
+            print("  [!] Root required to create virtual network adapter.")
+            print("  [!] Run with sudo:")
+            print("  [!]   sudo lanbridge host")
         print()
+        _wait_on_windows()
         return
 
     print()
-    print("  ╔═══════════════════════════════════════════════════════╗")
-    print("  ║            LanBridge VPN — ХОСТ                      ║")
-    print("  ╠═══════════════════════════════════════════════════════╣")
-    print(f"  ║  Твой IP:    {display_ip:<40}║")
-    print(f"  ║  Порт:       {port:<40}║")
-    print(f"  ║  Пароль:     {password:<40}║")
-    print("  ║                                                       ║")
-    print(f"  ║  Твой виртуальный IP:  {HOST_IP:<29}║")
-    print("  ║                                                       ║")
-    print("  ╠═══════════════════════════════════════════════════════╣")
-    print("  ║  Отправь другу:                                      ║")
-    print("  ║                                                       ║")
+    print("  +=====================================================+")
+    print("  |            LanBridge VPN -- HOST                    |")
+    print("  +=====================================================+")
+    print(f"  |  Your IP:       {display_ip:<39}|")
+    print(f"  |  Port:          {port:<39}|")
+    print(f"  |  Password:      {password:<39}|")
+    print("  |                                                     |")
+    print(f"  |  Your virtual IP:   {HOST_IP:<32}|")
+    print("  |                                                      |")
+    print("  +=====================================================+")
+    print("  |  Send to friend:                                    |")
+    print("  |                                                      |")
+    exe = 'lanbridge' if sys.platform != 'win32' else 'lanbridge-windows-amd64.exe'
     code = build_code(display_ip, port, password)
-    print(f"  ║  lanbridge connect {code}")
-    print("  ║                                                       ║")
-    print("  ╚═══════════════════════════════════════════════════════╝")
+    print(f"  |  {exe} connect {code}")
+    print("  |                                                      |")
+    print("  +=====================================================+")
     print()
 
     if ext_ip and ext_ip != local_ip:
-        print(f"  Локальный IP: {local_ip} (если друг в той же Wi-Fi)")
+        print(f"  Local IP: {local_ip} (if friend is on the same WiFi)")
         print()
 
     # Создаём VPN
@@ -167,13 +195,13 @@ async def cmd_host(args):
 
     def on_connected():
         print()
-        print("  ═════════════════════════════════════════════════════")
-        print(f"    Друг подключён! Его IP: {CLIENT_IP}")
-        print("    Вы в одной виртуальной локальной сети!")
-        print("  ═════════════════════════════════════════════════════")
+        print("  ===================================================")
+        print(f"    Friend connected! Their IP: {CLIENT_IP}")
+        print("    You are in the same virtual LAN!")
+        print("  ===================================================")
         print()
-        print("  Подключайся в игре к: 10.13.37.1  (или 10.13.37.2)")
-        print("  (это как обычный LAN — любые порты, любые протоколы)")
+        print("  Connect in game to: 10.13.37.1  (or 10.13.37.2)")
+        print("  (like a regular LAN -- any ports, any protocols)")
         print()
 
     try:
@@ -184,11 +212,12 @@ async def cmd_host(args):
         )
     except RuntimeError as e:
         print(f"\n  [!] {e}\n")
+        _wait_on_windows()
         return
 
-    print(f"  Виртуальный интерфейс создан: {tun.name}")
+    print(f"  Virtual interface: {tun.name}")
     print(f"  IP: {HOST_IP}")
-    print(f"  Ожидаю друга... (Ctrl+C — остановить)")
+    print(f"  Waiting for friend... (Ctrl+C to stop)")
     print()
 
     global _shutdown_event
@@ -206,7 +235,8 @@ async def cmd_host(args):
         await tunnel.stop()
         tun.stop()
         transport.close()
-        print("\n  VPN остановлен.")
+        print("\n  VPN stopped.")
+        _wait_on_windows()
 
 
 async def cmd_connect(args):
@@ -218,23 +248,28 @@ async def cmd_connect(args):
         return
 
     # Проверяем права
-    if sys.platform == 'linux' and os.getuid() != 0:
+    if not _has_admin():
         print()
-        print("  [!] Нужны права root для создания виртуальной сетевой карты.")
-        print("  [!] Запусти через sudo:")
-        print(f"  [!]   sudo lanbridge connect {args.code}")
+        if sys.platform == 'win32':
+            print("  [!] Administrator rights required to create virtual network adapter.")
+            print("  [!] Right-click the executable -> Run as administrator")
+        else:
+            print("  [!] Root required to create virtual network adapter.")
+            print("  [!] Run with sudo:")
+            print(f"  [!]   sudo lanbridge connect {args.code}")
         print()
+        _wait_on_windows()
         return
 
     print()
-    print("  ╔═══════════════════════════════════════════════════════╗")
-    print("  ║            LanBridge VPN — КЛИЕНТ                    ║")
-    print("  ╠═══════════════════════════════════════════════════════╣")
-    print(f"  ║  Сервер:     {ip}:{port:<33}║")
-    print(f"  ║  Пароль:     {password:<40}║")
-    print("  ║                                                       ║")
-    print(f"  ║  Твой виртуальный IP:  {CLIENT_IP:<29}║")
-    print("  ╚═══════════════════════════════════════════════════════╝")
+    print("  +=====================================================+")
+    print("  |            LanBridge VPN -- CLIENT                  |")
+    print("  +=====================================================+")
+    print(f"  |  Server:      {ip}:{port:<36}|")
+    print(f"  |  Password:    {password:<39}|")
+    print("  |                                                      |")
+    print(f"  |  Your virtual IP:   {CLIENT_IP:<32}|")
+    print("  +=====================================================+")
     print()
 
     # Создаём VPN
@@ -242,15 +277,15 @@ async def cmd_connect(args):
 
     def on_connected():
         print()
-        print("  ═════════════════════════════════════════════════════")
-        print("    Подключено! Вы в одной виртуальной сети!")
-        print("  ═════════════════════════════════════════════════════")
+        print("  ===================================================")
+        print("    Connected! You are in the same virtual LAN!")
+        print("  ===================================================")
         print()
-        print("  IP хоста: 10.13.37.1")
-        print("  Твой IP:  10.13.37.2")
+        print("  Host IP: 10.13.37.1")
+        print("  Your IP: 10.13.37.2")
         print()
-        print("  Подключайся в игре к: 10.13.37.1")
-        print("  (как обычный LAN — любые порты, любые протоколы)")
+        print("  Connect in game to: 10.13.37.1")
+        print("  (like a regular LAN -- any ports, any protocols)")
         print()
 
     try:
@@ -261,12 +296,13 @@ async def cmd_connect(args):
         )
     except RuntimeError as e:
         print(f"\n  [!] {e}\n")
+        _wait_on_windows()
         return
 
-    print(f"  Виртуальный интерфейс: {tun.name}")
+    print(f"  Virtual interface: {tun.name}")
     print(f"  IP: {CLIENT_IP}")
-    print(f"  Подключаюсь к {ip}:{port}...")
-    print(f"  (Ctrl+C — отключиться)")
+    print(f"  Connecting to {ip}:{port}...")
+    print(f"  (Ctrl+C to disconnect)")
     print()
 
     global _shutdown_event
@@ -284,27 +320,28 @@ async def cmd_connect(args):
         await tunnel.stop()
         tun.stop()
         transport.close()
-        print("\n  VPN остановлен.")
+        print("\n  VPN stopped.")
+        _wait_on_windows()
 
 
 def cmd_games(args=None):
-    """Подсказки по играм."""
+    """Game connection hints."""
     print()
-    print("  ╔═══════════════════════════════════════════════════════╗")
-    print("  ║  Подключение к хосту в любой игре:                  ║")
-    print("  ║  Используй IP: 10.13.37.1                           ║")
-    print("  ╠═══════════════════════════════════════════════════════╣")
-    print("  ║                                                       ║")
+    print("  +=====================================================+")
+    print("  |  Connect to host in any game:                       |")
+    print("  |  Use IP: 10.13.37.1                                 |")
+    print("  +=====================================================+")
+    print()
 
     for game, hint in sorted(GAME_HINTS.items()):
         name = game.replace('-', ' ').title()
-        print(f"  ║  {name:<22} {hint[:35]:<35}║")
+        print(f"    {name:<22} {hint}")
 
-    print("  ║                                                       ║")
-    print("  ║  Любая другая игра — просто подключайся к 10.13.37.1║")
-    print("  ║  на нужном порту. VPN прокидывает ВСЁ.               ║")
-    print("  ╚═══════════════════════════════════════════════════════╝")
     print()
+    print("    Any other game -- just connect to 10.13.37.1")
+    print("    on the required port. VPN forwards everything.")
+    print()
+    _wait_on_windows()
 
 
 async def cmd_relay(args):
@@ -314,8 +351,8 @@ async def cmd_relay(args):
 
     print()
     print("  LanBridge Relay Server")
-    print(f"  Порт: {port}")
-    print(f"  Пересылает зашифрованные пакеты между пирами.")
+    print(f"  Port: {port}")
+    print("  Forwarding encrypted packets between peers.")
     print()
 
     await run_relay_server(args.bind, port)
@@ -375,14 +412,19 @@ def main():
 
     if not args.command:
         print()
-        print("  LanBridge VPN — виртуальная локалка для игр")
+        print("  LanBridge VPN -- virtual LAN for gaming")
         print()
-        print("  1. Создай комнату:     sudo lanbridge host")
-        print("  2. Дай другу команду:  sudo lanbridge connect IP:ПОРТ:ПАРОЛЬ")
-        print("  3. Играйте! Оба видите друг друга по IP 10.13.37.x")
+        if sys.platform == 'win32':
+            print("  1. Create a room:       lanbridge host")
+            print("  2. Send friend:         lanbridge connect IP:PORT:PASSWORD")
+        else:
+            print("  1. Create a room:       sudo lanbridge host")
+            print("  2. Send friend:         sudo lanbridge connect IP:PORT:PASSWORD")
+        print("  3. Play! Both see each other at IP 10.13.37.x")
         print()
-        print("  Подсказки по играм:  lanbridge games")
+        print("  Game hints:  lanbridge games")
         print()
+        _wait_on_windows()
         return
 
     # Настройка логирования
