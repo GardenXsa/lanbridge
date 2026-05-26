@@ -1,0 +1,91 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-amd64
+            artifact: lanbridge-linux-amd64
+          - os: windows-latest
+            target: windows-amd64
+            artifact: lanbridge-windows-amd64.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyinstaller cryptography
+
+      - name: Build with PyInstaller (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          pyinstaller --onefile --name ${{ matrix.artifact }} --clean --noconfirm \
+            --hidden-import=lanbridge \
+            --hidden-import=lanbridge.cli \
+            --hidden-import=lanbridge.core.crypto \
+            --hidden-import=lanbridge.core.tunnel \
+            --hidden-import=lanbridge.core.vpn \
+            --hidden-import=lanbridge.platform.tun_device \
+            --hidden-import=lanbridge.relay \
+            --hidden-import=lanbridge.forwarder \
+            --hidden-import=lanbridge.upnp \
+            --hidden-import=lanbridge.vpn_bypass \
+            --collect-all cryptography \
+            -p . \
+            entry.py
+
+      - name: Build with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          pyinstaller --onefile --name ${{ matrix.artifact }} --clean --noconfirm ^
+            --hidden-import=lanbridge ^
+            --hidden-import=lanbridge.cli ^
+            --hidden-import=lanbridge.core.crypto ^
+            --hidden-import=lanbridge.core.tunnel ^
+            --hidden-import=lanbridge.core.vpn ^
+            --hidden-import=lanbridge.platform.tun_device ^
+            --hidden-import=lanbridge.relay ^
+            --hidden-import=lanbridge.forwarder ^
+            --hidden-import=lanbridge.upnp ^
+            --collect-all cryptography ^
+            -p . ^
+            entry.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
