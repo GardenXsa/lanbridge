@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "9876:9876/udp"
+    restart: always
+    environment:
+      - TZ=UTC
+    mem_limit: 256m
+    cpus: 0.5
