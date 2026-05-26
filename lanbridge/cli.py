@@ -372,8 +372,127 @@ async def _print_stats(vpn, tunnel):
         pass
 
 
+def _interactive_menu():
+    """Interactive menu when launched without arguments (e.g. double-click on Windows)."""
+    while True:
+        print()
+        print("  +=====================================================+")
+        print("  |            LanBridge VPN                            |")
+        print("  |            Virtual LAN for gaming                   |")
+        print("  +=====================================================+")
+        print()
+        print("  1. Create a room (host)")
+        print("  2. Connect to a room")
+        print("  3. Game connection hints")
+        print("  0. Exit")
+        print()
+
+        try:
+            choice = input("  Choose [0-3]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        if choice == '1':
+            print()
+            _run_host_interactive()
+            return
+        elif choice == '2':
+            print()
+            _run_connect_interactive()
+            return
+        elif choice == '3':
+            cmd_games()
+            return
+        elif choice == '0':
+            print()
+            return
+        else:
+            print("  Invalid choice.")
+
+
+def _run_host_interactive():
+    """Run host command from interactive menu."""
+    level = logging.WARNING
+    logging.basicConfig(level=level, format='')
+
+    if not _has_admin():
+        print()
+        if sys.platform == 'win32':
+            print("  [!] Administrator rights required to create virtual network adapter.")
+            print("  [!] Right-click the executable -> Run as administrator")
+        else:
+            print("  [!] Root required to create virtual network adapter.")
+            print("  [!] Run with sudo:")
+            print("  [!]   sudo lanbridge host")
+        print()
+        _wait_on_windows()
+        return
+
+    def signal_handler(sig, frame):
+        global _shutdown_event
+        if _shutdown_event:
+            _shutdown_event.set()
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    args = argparse.Namespace(password=None, port=9876, ip=None)
+    asyncio.run(cmd_host(args))
+
+
+def _run_connect_interactive():
+    """Run connect command from interactive menu."""
+    level = logging.WARNING
+    logging.basicConfig(level=level, format='')
+
+    print("  Enter the connection code from the host.")
+    print("  Format: IP:PORT:PASSWORD")
+    print("  Example: 203.0.113.42:9876:kX7mR2vNpB4qL9wE")
+    print()
+
+    try:
+        code = input("  Code: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    if not code:
+        print("  No code entered.")
+        _wait_on_windows()
+        return
+
+    if not _has_admin():
+        print()
+        if sys.platform == 'win32':
+            print("  [!] Administrator rights required to create virtual network adapter.")
+            print("  [!] Right-click the executable -> Run as administrator")
+        else:
+            print("  [!] Root required to create virtual network adapter.")
+            print("  [!] Run with sudo:")
+            print(f"  [!]   sudo lanbridge connect {code}")
+        print()
+        _wait_on_windows()
+        return
+
+    def signal_handler(sig, frame):
+        global _shutdown_event
+        if _shutdown_event:
+            _shutdown_event.set()
+
+    signal.signal(signal.SIGINT, signal_handler)
+
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+    args = argparse.Namespace(code=code)
+    asyncio.run(cmd_connect(args))
+
+
 # ═══════════════════════════════════════════════════════════
-# ТОЧКА ВХОДА
+# ENTRY POINT
 # ═══════════════════════════════════════════════════════════
 
 def main():
@@ -411,20 +530,7 @@ def main():
     args = parser.parse_args()
 
     if not args.command:
-        print()
-        print("  LanBridge VPN -- virtual LAN for gaming")
-        print()
-        if sys.platform == 'win32':
-            print("  1. Create a room:       lanbridge host")
-            print("  2. Send friend:         lanbridge connect IP:PORT:PASSWORD")
-        else:
-            print("  1. Create a room:       sudo lanbridge host")
-            print("  2. Send friend:         sudo lanbridge connect IP:PORT:PASSWORD")
-        print("  3. Play! Both see each other at IP 10.13.37.x")
-        print()
-        print("  Game hints:  lanbridge games")
-        print()
-        _wait_on_windows()
+        _interactive_menu()
         return
 
     # Настройка логирования
