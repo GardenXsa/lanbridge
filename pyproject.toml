@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lanbridge"
+version = "1.0.5"
+description = "Peer-to-peer VPN for LAN emulation"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.7"
+authors = [
+    {name = "GardenXsa"},
+]
+keywords = ["vpn", "lan", "tunnel", "p2p", "gaming", "tun"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking",
+    "Topic :: Games/Entertainment",
+]
+dependencies = [
+    "cryptography>=41.0.0",
+]
+
+[project.scripts]
+lanbridge = "lanbridge.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/GardenXsa/lanbridge"
+Repository = "https://github.com/GardenXsa/lanbridge"
+Issues = "https://github.com/GardenXsa/lanbridge/issues"
